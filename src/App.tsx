@@ -1,308 +1,634 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
-  History, 
-  Settings, 
+  Image as ImageIcon, 
+  Type, 
+  Palette, 
+  Layout, 
+  Download, 
+  Plus, 
   Trash2, 
-  Moon, 
-  Sun, 
-  RotateCcw, 
-  ChevronRight,
-  Calculator,
-  FlaskConical,
-  Ruler,
-  Clock
+  Layers,
+  RotateCcw,
+  Sparkles,
+  Heart,
+  Camera,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Mode = 'standard' | 'scientific' | 'converter';
+// --- Types ---
 
-interface HistoryItem {
-  expression: string;
-  result: string;
-  timestamp: number;
-}
-
-const CONVERSIONS = {
-  length: [
-    { name: 'CM to Inch', factor: 0.393701 },
-    { name: 'Inch to CM', factor: 2.54 },
-    { name: 'M to Feet', factor: 3.28084 },
-    { name: 'Feet to M', factor: 0.3048 },
-  ],
-  weight: [
-    { name: 'KG to LBS', factor: 2.20462 },
-    { name: 'LBS to KG', factor: 0.453592 },
-  ]
+type FontOption = {
+  name: string;
+  family: string;
+  class: string;
 };
 
+const FONTS: FontOption[] = [
+  { name: 'Modern Sans', family: 'Inter', class: 'font-sans' },
+  { name: 'Elegant Serif', family: 'Playfair Display', class: 'font-serif' },
+  { name: 'Tech Display', family: 'Space Grotesk', class: 'font-display' },
+  { name: 'Classic Serif', family: 'Cormorant Garamond', class: 'font-classic' },
+  { name: 'Bold Brutal', family: 'Anton', class: 'font-brutal' },
+  { name: 'Bookish', family: 'Libre Baskerville', class: 'font-book' },
+];
+
+type TextLayer = {
+  id: string;
+  text: string;
+  font: FontOption;
+  size: number;
+  color: string;
+  x: number;
+  y: number;
+  rotation: number;
+  weight: string;
+  letterSpacing: string;
+};
+
+type CardConfig = {
+  backgroundColor: string;
+  gradientEnabled: boolean;
+  gradientColor: string;
+  borderRadius: number;
+  borderWidth: number;
+  borderColor: string;
+  padding: number;
+  aspectRatio: '3/4' | '1/1' | '4/5' | '9/16';
+  imageOpacity: number;
+  imageBlur: number;
+  imageScale: number;
+  imageGrayscale: boolean;
+};
+
+// --- Main Component ---
+
 export default function App() {
-  const [display, setDisplay] = useState('0');
-  const [expression, setExpression] = useState('');
-  const [mode, setMode] = useState<Mode>('standard');
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [isDark, setIsDark] = useState(false);
-
-  // Load history from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('omni_calc_history');
-    if (saved) setHistory(JSON.parse(saved));
-  }, []);
-
-  // Save history to localStorage
-  useEffect(() => {
-    localStorage.setItem('omni_calc_history', JSON.stringify(history));
-  }, [history]);
-
-  const handleNumber = (num: string) => {
-    if (display === '0' || display === 'Error') {
-      setDisplay(num);
-    } else {
-      setDisplay(display + num);
+  const [image, setImage] = useState<string | null>(null);
+  const [textLayers, setTextLayers] = useState<TextLayer[]>([
+    {
+      id: '1',
+      text: 'MOMENTS',
+      font: FONTS[4],
+      size: 48,
+      color: '#FFFFFF',
+      x: 50,
+      y: 85,
+      rotation: 0,
+      weight: '900',
+      letterSpacing: '0.1em'
     }
-  };
+  ]);
+  const [config, setConfig] = useState<CardConfig>({
+    backgroundColor: '#000000',
+    gradientEnabled: true,
+    gradientColor: '#333333',
+    borderRadius: 24,
+    borderWidth: 0,
+    borderColor: '#FFFFFF',
+    padding: 0,
+    aspectRatio: '3/4',
+    imageOpacity: 1,
+    imageBlur: 0,
+    imageScale: 1,
+    imageGrayscale: false
+  });
+  const [activeLayerId, setActiveLayerId] = useState<string | null>('1');
+  const [activeTab, setActiveTab] = useState<'image' | 'text' | 'style' | 'layout'>('image');
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  const handleOperator = (op: string) => {
-    setExpression(display + ' ' + op + ' ');
-    setDisplay('0');
-  };
+  // --- Handlers ---
 
-  const calculate = useCallback(() => {
-    try {
-      const fullExpression = expression + display;
-      const sanitized = fullExpression.replace(/[^-()\d/*+.]/g, '');
-      const result = eval(sanitized);
-      
-      const resultStr = Number.isInteger(result) ? result.toString() : result.toFixed(8).replace(/\.?0+$/, '');
-      
-      const newItem: HistoryItem = {
-        expression: fullExpression,
-        result: resultStr,
-        timestamp: Date.now()
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImage(event.target?.result as string);
       };
-      
-      setHistory([newItem, ...history].slice(0, 20));
-      setDisplay(resultStr);
-      setExpression('');
-    } catch (e) {
-      setDisplay('Error');
-    }
-  }, [display, expression, history]);
-
-  const clear = () => {
-    setDisplay('0');
-    setExpression('');
-  };
-
-  const backspace = () => {
-    if (display.length > 1) {
-      setDisplay(display.slice(0, -1));
-    } else {
-      setDisplay('0');
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleScientific = (func: string) => {
-    try {
-      const val = parseFloat(display);
-      let res = 0;
-      switch (func) {
-        case 'sin': res = Math.sin(val); break;
-        case 'cos': res = Math.cos(val); break;
-        case 'tan': res = Math.tan(val); break;
-        case 'sqrt': res = Math.sqrt(val); break;
-        case 'log': res = Math.log10(val); break;
-        case 'ln': res = Math.log(val); break;
-        case 'pow2': res = Math.pow(val, 2); break;
-        case 'pi': res = Math.PI; break;
-      }
-      setDisplay(res.toString());
-    } catch (e) {
-      setDisplay('Error');
-    }
-  };
-
-  const handleConvert = (factor: number, name: string) => {
-    const val = parseFloat(display);
-    const res = val * factor;
-    const resStr = res.toFixed(4).replace(/\.?0+$/, '');
-    
-    const newItem: HistoryItem = {
-      expression: `${val} (${name})`,
-      result: resStr,
-      timestamp: Date.now()
+  const addTextLayer = () => {
+    const newLayer: TextLayer = {
+      id: Date.now().toString(),
+      text: 'New Text',
+      font: FONTS[0],
+      size: 24,
+      color: '#FFFFFF',
+      x: 50,
+      y: 50,
+      rotation: 0,
+      weight: '400',
+      letterSpacing: '0'
     };
-    
-    setHistory([newItem, ...history].slice(0, 20));
-    setDisplay(resStr);
+    setTextLayers([...textLayers, newLayer]);
+    setActiveLayerId(newLayer.id);
+  };
+
+  const updateLayer = (id: string, updates: Partial<TextLayer>) => {
+    setTextLayers(layers => layers.map(l => l.id === id ? { ...l, ...updates } : l));
+  };
+
+  const removeLayer = (id: string) => {
+    setTextLayers(layers => layers.filter(l => l.id !== id));
+    if (activeLayerId === id) setActiveLayerId(null);
+  };
+
+  const activeLayer = textLayers.find(l => l.id === activeLayerId);
+
+  const resetCard = () => {
+    if (window.confirm('Reset all changes?')) {
+      setImage(null);
+      setTextLayers([{
+        id: '1',
+        text: 'MOMENTS',
+        font: FONTS[4],
+        size: 48,
+        color: '#FFFFFF',
+        x: 50,
+        y: 85,
+        rotation: 0,
+        weight: '900',
+        letterSpacing: '0.1em'
+      }]);
+      setConfig({
+        backgroundColor: '#000000',
+        gradientEnabled: true,
+        gradientColor: '#333333',
+        borderRadius: 24,
+        borderWidth: 0,
+        borderColor: '#FFFFFF',
+        padding: 0,
+        aspectRatio: '3/4',
+        imageOpacity: 1,
+        imageBlur: 0,
+        imageScale: 1,
+        imageGrayscale: false
+      });
+    }
+  };
+
+  // --- Render Helpers ---
+
+  const renderControlTab = () => {
+    switch (activeTab) {
+      case 'image':
+        return (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-4">
+              <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Photo Source</label>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full h-32 border-2 border-dashed border-stone-200 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-stone-400 hover:bg-stone-50 transition-all group"
+              >
+                <div className="p-3 bg-stone-100 rounded-full group-hover:scale-110 transition-transform">
+                  <Camera className="w-6 h-6 text-stone-600" />
+                </div>
+                <span className="text-sm font-medium text-stone-600">Upload from device</span>
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
+            </div>
+
+            {image && (
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Scale</label>
+                    <span className="text-xs font-mono text-stone-500">{Math.round(config.imageScale * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0.5" max="2" step="0.01" 
+                    value={config.imageScale} 
+                    onChange={(e) => setConfig({ ...config, imageScale: parseFloat(e.target.value) })}
+                    className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Blur</label>
+                    <span className="text-xs font-mono text-stone-500">{config.imageBlur}px</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="20" step="1" 
+                    value={config.imageBlur} 
+                    onChange={(e) => setConfig({ ...config, imageBlur: parseInt(e.target.value) })}
+                    className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl">
+                  <span className="text-sm font-medium text-stone-700">Grayscale Filter</span>
+                  <button 
+                    onClick={() => setConfig({ ...config, imageGrayscale: !config.imageGrayscale })}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${config.imageGrayscale ? 'bg-stone-900' : 'bg-stone-200'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.imageGrayscale ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'text':
+        return (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Layers</label>
+              <button 
+                onClick={addTextLayer}
+                className="p-2 bg-stone-900 text-white rounded-full hover:scale-110 transition-transform"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+              {textLayers.map((layer, idx) => (
+                <button
+                  key={layer.id}
+                  onClick={() => setActiveLayerId(layer.id)}
+                  className={`px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                    activeLayerId === layer.id 
+                      ? 'bg-stone-900 text-white' 
+                      : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                  }`}
+                >
+                  Layer {idx + 1}
+                </button>
+              ))}
+            </div>
+
+            {activeLayer && (
+              <div className="space-y-6 pt-4 border-t border-stone-100">
+                <div className="space-y-3">
+                  <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Content</label>
+                  <textarea 
+                    value={activeLayer.text}
+                    onChange={(e) => updateLayer(activeLayer.id, { text: e.target.value })}
+                    className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-900/10 resize-none h-24"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Typography</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {FONTS.map(font => (
+                      <button
+                        key={font.name}
+                        onClick={() => updateLayer(activeLayer.id, { font })}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          activeLayer.font.name === font.name 
+                            ? 'border-stone-900 bg-stone-900 text-white' 
+                            : 'border-stone-100 hover:border-stone-300'
+                        }`}
+                      >
+                        <span className={`text-sm ${font.class}`}>{font.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Size</label>
+                    <input 
+                      type="number" 
+                      value={activeLayer.size}
+                      onChange={(e) => updateLayer(activeLayer.id, { size: parseInt(e.target.value) })}
+                      className="w-full p-3 bg-stone-50 border border-stone-100 rounded-xl text-sm"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Color</label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="color" 
+                        value={activeLayer.color}
+                        onChange={(e) => updateLayer(activeLayer.id, { color: e.target.value })}
+                        className="w-10 h-10 rounded-lg cursor-pointer border-none"
+                      />
+                      <span className="text-xs font-mono text-stone-500">{activeLayer.color.toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Position Y</label>
+                    <span className="text-xs font-mono text-stone-500">{activeLayer.y}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="100" 
+                    value={activeLayer.y} 
+                    onChange={(e) => updateLayer(activeLayer.id, { y: parseInt(e.target.value) })}
+                    className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"
+                  />
+                </div>
+
+                <button 
+                  onClick={() => removeLayer(activeLayer.id)}
+                  className="w-full py-3 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-2xl transition-colors text-sm font-medium"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Layer
+                </button>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'style':
+        return (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Background</label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <span className="text-[10px] text-stone-400 uppercase">Primary</span>
+                  <input 
+                    type="color" 
+                    value={config.backgroundColor}
+                    onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
+                    className="w-full h-10 rounded-xl cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <span className="text-[10px] text-stone-400 uppercase">Gradient</span>
+                  <input 
+                    type="color" 
+                    value={config.gradientColor}
+                    onChange={(e) => setConfig({ ...config, gradientColor: e.target.value })}
+                    className="w-full h-10 rounded-xl cursor-pointer"
+                  />
+                </div>
+              </div>
+              <button 
+                onClick={() => setConfig({ ...config, gradientEnabled: !config.gradientEnabled })}
+                className={`w-full py-2 rounded-xl text-xs font-bold transition-all ${
+                  config.gradientEnabled ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-500'
+                }`}
+              >
+                {config.gradientEnabled ? 'Gradient Enabled' : 'Enable Gradient'}
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Corners</label>
+                <span className="text-xs font-mono text-stone-500">{config.borderRadius}px</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" max="60" 
+                value={config.borderRadius} 
+                onChange={(e) => setConfig({ ...config, borderRadius: parseInt(e.target.value) })}
+                className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Padding</label>
+                <span className="text-xs font-mono text-stone-500">{config.padding}px</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" max="40" 
+                value={config.padding} 
+                onChange={(e) => setConfig({ ...config, padding: parseInt(e.target.value) })}
+                className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"
+              />
+            </div>
+          </div>
+        );
+
+      case 'layout':
+        return (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Aspect Ratio</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Classic (3:4)', value: '3/4' },
+                  { label: 'Square (1:1)', value: '1/1' },
+                  { label: 'Portrait (4:5)', value: '4/5' },
+                  { label: 'Story (9:16)', value: '9/16' },
+                ].map(ratio => (
+                  <button
+                    key={ratio.value}
+                    onClick={() => setConfig({ ...config, aspectRatio: ratio.value as any })}
+                    className={`p-3 rounded-xl border text-sm font-medium transition-all ${
+                      config.aspectRatio === ratio.value 
+                        ? 'border-stone-900 bg-stone-900 text-white' 
+                        : 'border-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    {ratio.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 bg-stone-900 rounded-3xl text-white space-y-4">
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+                <h4 className="text-sm font-bold">Pro Tip</h4>
+              </div>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Try using a high-contrast font like <span className="text-white font-bold italic">Anton</span> for a brutalist look, or <span className="text-white font-bold italic">Cormorant Garamond</span> for an editorial feel.
+              </p>
+            </div>
+          </div>
+        );
+    }
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${isDark ? 'bg-[#0F172A]' : 'bg-[#F1F5F9]'}`}>
-      <div className={`w-full max-w-md glass rounded-[2.5rem] overflow-hidden flex flex-col h-[800px] relative ${isDark ? 'bg-slate-900/90 border-slate-800' : ''}`}>
-        
-        {/* Header */}
-        <div className="p-6 flex justify-between items-center">
-          <div className="flex gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-xl">
-            <button 
-              onClick={() => setMode('standard')}
-              className={`p-2 rounded-lg transition-all ${mode === 'standard' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-gray-400'}`}
-            >
-              <Calculator size={18} />
-            </button>
-            <button 
-              onClick={() => setMode('scientific')}
-              className={`p-2 rounded-lg transition-all ${mode === 'scientific' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-gray-400'}`}
-            >
-              <FlaskConical size={18} />
-            </button>
-            <button 
-              onClick={() => setMode('converter')}
-              className={`p-2 rounded-lg transition-all ${mode === 'converter' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-gray-400'}`}
-            >
-              <Ruler size={18} />
-            </button>
-          </div>
-          
-          <div className="flex gap-3">
-            <button 
-              onClick={() => setIsDark(!isDark)}
-              className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-            >
-              {isDark ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button 
-              onClick={() => setShowHistory(!showHistory)}
-              className={`p-2 transition-colors ${showHistory ? 'text-blue-600' : 'text-gray-400'}`}
-            >
-              <History size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* Display */}
-        <div className="flex-1 flex flex-col justify-end p-8 text-right overflow-hidden">
-          <div className="text-sm font-medium text-gray-400 dark:text-slate-500 mb-2 h-6 overflow-hidden whitespace-nowrap">
-            {expression}
-          </div>
-          <div className={`text-6xl font-bold tracking-tight break-all ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            {display}
-          </div>
-        </div>
-
-        {/* Keypad */}
-        <div className={`p-6 grid grid-cols-4 gap-3 ${isDark ? 'bg-slate-900/50' : 'bg-white/50'}`}>
-          {mode === 'scientific' && (
-            <div className="col-span-4 grid grid-cols-4 gap-3 mb-3">
-              <button onClick={() => handleScientific('sin')} className="calc-btn calc-btn-func h-12 text-sm">sin</button>
-              <button onClick={() => handleScientific('cos')} className="calc-btn calc-btn-func h-12 text-sm">cos</button>
-              <button onClick={() => handleScientific('tan')} className="calc-btn calc-btn-func h-12 text-sm">tan</button>
-              <button onClick={() => handleScientific('sqrt')} className="calc-btn calc-btn-func h-12 text-sm">√</button>
-              <button onClick={() => handleScientific('log')} className="calc-btn calc-btn-func h-12 text-sm">log</button>
-              <button onClick={() => handleScientific('ln')} className="calc-btn calc-btn-func h-12 text-sm">ln</button>
-              <button onClick={() => handleScientific('pow2')} className="calc-btn calc-btn-func h-12 text-sm">x²</button>
-              <button onClick={() => handleScientific('pi')} className="calc-btn calc-btn-func h-12 text-sm">π</button>
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[#F5F5F4]">
+      {/* Sidebar Controls */}
+      <aside className="w-full lg:w-[400px] h-screen bg-white border-r border-stone-200 flex flex-col z-20">
+        <div className="p-8 border-b border-stone-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-stone-900 rounded-lg flex items-center justify-center">
+              <ImageIcon className="w-4 h-4 text-white" />
             </div>
-          )}
-
-          {mode === 'converter' && (
-            <div className="col-span-4 grid grid-cols-2 gap-3 mb-3">
-              {CONVERSIONS.length.map(c => (
-                <button key={c.name} onClick={() => handleConvert(c.factor, c.name)} className="calc-btn calc-btn-func h-12 text-xs">{c.name}</button>
-              ))}
-              {CONVERSIONS.weight.map(c => (
-                <button key={c.name} onClick={() => handleConvert(c.factor, c.name)} className="calc-btn calc-btn-func h-12 text-xs">{c.name}</button>
-              ))}
-            </div>
-          )}
-
-          <button onClick={clear} className="calc-btn calc-btn-func h-16 text-red-500">AC</button>
-          <button onClick={() => handleOperator('%')} className="calc-btn calc-btn-func h-16">%</button>
-          <button onClick={backspace} className="calc-btn calc-btn-func h-16"><RotateCcw size={20} /></button>
-          <button onClick={() => handleOperator('/')} className="calc-btn calc-btn-op h-16">÷</button>
-
-          <button onClick={() => handleNumber('7')} className="calc-btn calc-btn-num h-16">7</button>
-          <button onClick={() => handleNumber('8')} className="calc-btn calc-btn-num h-16">8</button>
-          <button onClick={() => handleNumber('9')} className="calc-btn calc-btn-num h-16">9</button>
-          <button onClick={() => handleOperator('*')} className="calc-btn calc-btn-op h-16">×</button>
-
-          <button onClick={() => handleNumber('4')} className="calc-btn calc-btn-num h-16">4</button>
-          <button onClick={() => handleNumber('5')} className="calc-btn calc-btn-num h-16">5</button>
-          <button onClick={() => handleNumber('6')} className="calc-btn calc-btn-num h-16">6</button>
-          <button onClick={() => handleOperator('-')} className="calc-btn calc-btn-op h-16">−</button>
-
-          <button onClick={() => handleNumber('1')} className="calc-btn calc-btn-num h-16">1</button>
-          <button onClick={() => handleNumber('2')} className="calc-btn calc-btn-num h-16">2</button>
-          <button onClick={() => handleNumber('3')} className="calc-btn calc-btn-num h-16">3</button>
-          <button onClick={() => handleOperator('+')} className="calc-btn calc-btn-op h-16">+</button>
-
-          <button onClick={() => handleNumber('0')} className="calc-btn calc-btn-num h-16 col-span-2">0</button>
-          <button onClick={() => handleNumber('.')} className="calc-btn calc-btn-num h-16">.</button>
-          <button onClick={calculate} className="calc-btn calc-btn-eq h-16">=</button>
+            <h1 className="text-lg font-bold tracking-tight">VibeCard</h1>
+          </div>
+          <button 
+            onClick={resetCard}
+            className="p-2 text-stone-400 hover:text-stone-900 transition-colors"
+            title="Reset Card"
+          >
+            <RotateCcw className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* History Overlay */}
-        <AnimatePresence>
-          {showHistory && (
-            <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className={`absolute inset-0 z-20 flex flex-col ${isDark ? 'bg-slate-900' : 'bg-white'}`}
+        <nav className="flex border-b border-stone-100">
+          {[
+            { id: 'image', icon: ImageIcon, label: 'Photo' },
+            { id: 'text', icon: Type, label: 'Text' },
+            { id: 'style', icon: Palette, label: 'Style' },
+            { id: 'layout', icon: Layout, label: 'Layout' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all relative ${
+                activeTab === tab.id ? 'text-stone-900' : 'text-stone-400 hover:text-stone-600'
+              }`}
             >
-              <div className="p-6 flex justify-between items-center border-b border-gray-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <History size={20} className="text-blue-600" />
-                  <h3 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>History</h3>
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setHistory([])}
-                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                  <button 
-                    onClick={() => setShowHistory(false)}
-                    className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                  >
-                    <ChevronRight size={24} />
-                  </button>
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {history.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
-                    <Clock size={48} strokeWidth={1} />
-                    <p>No history yet</p>
-                  </div>
-                ) : (
-                  history.map((item, i) => (
-                    <div 
-                      key={i} 
-                      className="text-right group cursor-pointer"
-                      onClick={() => {
-                        setDisplay(item.result);
-                        setShowHistory(false);
-                      }}
-                    >
-                      <div className="text-sm text-gray-400 dark:text-slate-500 mb-1 group-hover:text-blue-400 transition-colors">
-                        {item.expression}
-                      </div>
-                      <div className="text-xl font-bold dark:text-white">
-                        = {item.result}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <tab.icon className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">{tab.label}</span>
+              {activeTab === tab.id && (
+                <motion.div 
+                  layoutId="activeTab"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-stone-900" 
+                />
+              )}
+            </button>
+          ))}
+        </nav>
 
-      </div>
+        <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
+          {renderControlTab()}
+        </div>
+
+        <div className="p-8 border-t border-stone-100 bg-stone-50/50">
+          <button 
+            onClick={() => window.print()}
+            className="w-full py-4 bg-stone-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-stone-800 transition-all shadow-xl shadow-stone-900/10"
+          >
+            <Download className="w-5 h-5" />
+            Export Photo Card
+          </button>
+        </div>
+      </aside>
+
+      {/* Preview Area */}
+      <main className="flex-1 h-screen overflow-hidden flex items-center justify-center p-8 lg:p-20 relative">
+        {/* Background Decoration */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-stone-200/50 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-stone-300/50 rounded-full blur-[120px]" />
+        </div>
+
+        <div className="card-preview-container w-full max-w-2xl flex flex-col items-center gap-8">
+          {/* Card Preview */}
+          <motion.div 
+            ref={cardRef}
+            initial={{ opacity: 0, scale: 0.9, rotateY: -10 }}
+            animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+            className="card-preview relative shadow-[0_50px_100px_-20px_rgba(0,0,0,0.25)] overflow-hidden"
+            style={{
+              aspectRatio: config.aspectRatio,
+              width: '100%',
+              borderRadius: `${config.borderRadius}px`,
+              border: `${config.borderWidth}px solid ${config.borderColor}`,
+              padding: `${config.padding}px`,
+              background: config.gradientEnabled 
+                ? `linear-gradient(135deg, ${config.backgroundColor}, ${config.gradientColor})`
+                : config.backgroundColor
+            }}
+          >
+            {/* Image Layer */}
+            <div className="absolute inset-0 w-full h-full overflow-hidden">
+              {image ? (
+                <img 
+                  src={image} 
+                  alt="Card" 
+                  className="w-full h-full object-cover transition-all duration-500"
+                  style={{
+                    opacity: config.imageOpacity,
+                    filter: `blur(${config.imageBlur}px) grayscale(${config.imageGrayscale ? 1 : 0})`,
+                    transform: `scale(${config.imageScale})`,
+                    referrerPolicy: 'no-referrer'
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full bg-stone-100 flex flex-col items-center justify-center gap-4 text-stone-300">
+                  <ImageIcon className="w-16 h-16" strokeWidth={1} />
+                  <span className="text-sm font-medium uppercase tracking-widest">No Photo Selected</span>
+                </div>
+              )}
+            </div>
+
+            {/* Text Layers */}
+            {textLayers.map(layer => (
+              <div
+                key={layer.id}
+                className={`absolute w-full px-8 text-center pointer-events-none transition-all duration-300 ${layer.font.class}`}
+                style={{
+                  top: `${layer.y}%`,
+                  left: `${layer.x}%`,
+                  transform: `translate(-50%, -50%) rotate(${layer.rotation}deg)`,
+                  fontSize: `${layer.size}px`,
+                  color: layer.color,
+                  fontWeight: layer.weight,
+                  letterSpacing: layer.letterSpacing,
+                  textShadow: '0 2px 10px rgba(0,0,0,0.2)'
+                }}
+              >
+                {layer.text}
+              </div>
+            ))}
+
+            {/* Overlay Elements */}
+            <div className="absolute top-8 left-8 p-3 bg-white/10 backdrop-blur-md rounded-full border border-white/20">
+              <Heart className="w-4 h-4 text-white" fill="white" />
+            </div>
+            
+            <div className="absolute bottom-8 right-8 flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full border border-white/10">
+              <span className="text-[10px] font-bold text-white uppercase tracking-widest">VibeCard Studio</span>
+            </div>
+          </motion.div>
+
+          {/* Floating Actions */}
+          <div className="flex items-center gap-4">
+            <button className="p-4 bg-white rounded-2xl shadow-lg hover:scale-110 transition-transform text-stone-600">
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button className="p-4 bg-white rounded-2xl shadow-lg hover:scale-110 transition-transform text-stone-600">
+              <Layers className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => window.print()}
+              className="px-8 py-4 bg-stone-900 text-white rounded-2xl shadow-xl font-bold hover:scale-105 transition-transform"
+            >
+              Print Card
+            </button>
+          </div>
+        </div>
+      </main>
+
+      {/* Print Styles */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          aside, .floating-actions, .bg-decoration { display: none !important; }
+          body { background: white !important; }
+          main { padding: 0 !important; height: auto !important; }
+          .card-preview { 
+            box-shadow: none !important; 
+            width: 100% !important; 
+            max-width: 500px !important;
+            margin: 0 auto !important;
+          }
+        }
+      `}} />
     </div>
   );
 }
