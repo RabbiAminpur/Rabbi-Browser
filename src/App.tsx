@@ -1,154 +1,308 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Search, 
-  ArrowLeft, 
-  ArrowRight, 
+  History, 
+  Settings, 
+  Trash2, 
+  Moon, 
+  Sun, 
   RotateCcw, 
-  Shield, 
-  ShieldCheck, 
-  Globe,
-  ExternalLink,
-  Lock,
-  Menu
+  ChevronRight,
+  Calculator,
+  FlaskConical,
+  Ruler,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function App() {
-  const [url, setUrl] = useState('');
-  const [currentUrl, setCurrentUrl] = useState('');
-  const [isProxyEnabled, setIsProxyEnabled] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+type Mode = 'standard' | 'scientific' | 'converter';
 
-  const handleNavigate = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    let targetUrl = url.trim();
-    if (!targetUrl.startsWith('http')) {
-      targetUrl = 'https://' + targetUrl;
+interface HistoryItem {
+  expression: string;
+  result: string;
+  timestamp: number;
+}
+
+const CONVERSIONS = {
+  length: [
+    { name: 'CM to Inch', factor: 0.393701 },
+    { name: 'Inch to CM', factor: 2.54 },
+    { name: 'M to Feet', factor: 3.28084 },
+    { name: 'Feet to M', factor: 0.3048 },
+  ],
+  weight: [
+    { name: 'KG to LBS', factor: 2.20462 },
+    { name: 'LBS to KG', factor: 0.453592 },
+  ]
+};
+
+export default function App() {
+  const [display, setDisplay] = useState('0');
+  const [expression, setExpression] = useState('');
+  const [mode, setMode] = useState<Mode>('standard');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+
+  // Load history from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('omni_calc_history');
+    if (saved) setHistory(JSON.parse(saved));
+  }, []);
+
+  // Save history to localStorage
+  useEffect(() => {
+    localStorage.setItem('omni_calc_history', JSON.stringify(history));
+  }, [history]);
+
+  const handleNumber = (num: string) => {
+    if (display === '0' || display === 'Error') {
+      setDisplay(num);
+    } else {
+      setDisplay(display + num);
     }
-    
-    setIsLoading(true);
-    const finalUrl = isProxyEnabled 
-      ? `/api/proxy?url=${encodeURIComponent(targetUrl)}` 
-      : targetUrl;
-    
-    setCurrentUrl(finalUrl);
-    setUrl(targetUrl);
   };
 
-  const reload = () => {
-    if (iframeRef.current) {
-      iframeRef.current.src = iframeRef.current.src;
+  const handleOperator = (op: string) => {
+    setExpression(display + ' ' + op + ' ');
+    setDisplay('0');
+  };
+
+  const calculate = useCallback(() => {
+    try {
+      const fullExpression = expression + display;
+      const sanitized = fullExpression.replace(/[^-()\d/*+.]/g, '');
+      const result = eval(sanitized);
+      
+      const resultStr = Number.isInteger(result) ? result.toString() : result.toFixed(8).replace(/\.?0+$/, '');
+      
+      const newItem: HistoryItem = {
+        expression: fullExpression,
+        result: resultStr,
+        timestamp: Date.now()
+      };
+      
+      setHistory([newItem, ...history].slice(0, 20));
+      setDisplay(resultStr);
+      setExpression('');
+    } catch (e) {
+      setDisplay('Error');
     }
+  }, [display, expression, history]);
+
+  const clear = () => {
+    setDisplay('0');
+    setExpression('');
+  };
+
+  const backspace = () => {
+    if (display.length > 1) {
+      setDisplay(display.slice(0, -1));
+    } else {
+      setDisplay('0');
+    }
+  };
+
+  const handleScientific = (func: string) => {
+    try {
+      const val = parseFloat(display);
+      let res = 0;
+      switch (func) {
+        case 'sin': res = Math.sin(val); break;
+        case 'cos': res = Math.cos(val); break;
+        case 'tan': res = Math.tan(val); break;
+        case 'sqrt': res = Math.sqrt(val); break;
+        case 'log': res = Math.log10(val); break;
+        case 'ln': res = Math.log(val); break;
+        case 'pow2': res = Math.pow(val, 2); break;
+        case 'pi': res = Math.PI; break;
+      }
+      setDisplay(res.toString());
+    } catch (e) {
+      setDisplay('Error');
+    }
+  };
+
+  const handleConvert = (factor: number, name: string) => {
+    const val = parseFloat(display);
+    const res = val * factor;
+    const resStr = res.toFixed(4).replace(/\.?0+$/, '');
+    
+    const newItem: HistoryItem = {
+      expression: `${val} (${name})`,
+      result: resStr,
+      timestamp: Date.now()
+    };
+    
+    setHistory([newItem, ...history].slice(0, 20));
+    setDisplay(resStr);
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#1e1e1e] text-white font-sans overflow-hidden">
-      {/* Browser Toolbar */}
-      <header className="bg-[#2d2d2d] p-3 flex items-center gap-4 border-b border-white/5 shadow-lg z-10">
-        <div className="flex gap-2">
-          <button className="p-2 hover:bg-white/5 rounded-full text-white/40"><ArrowLeft className="w-4 h-4" /></button>
-          <button className="p-2 hover:bg-white/5 rounded-full text-white/40"><ArrowRight className="w-4 h-4" /></button>
-          <button onClick={reload} className="p-2 hover:bg-white/5 rounded-full"><RotateCcw className="w-4 h-4" /></button>
-        </div>
-
-        <form onSubmit={handleNavigate} className="flex-1 flex items-center bg-[#1a1a1a] rounded-full px-4 py-1.5 border border-white/10 focus-within:border-emerald-500/50 transition-all">
-          <Lock className="w-3 h-3 text-emerald-500 mr-3" />
-          <input 
-            type="text" 
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Search or enter website address"
-            className="bg-transparent flex-1 outline-none text-sm placeholder:text-white/20"
-          />
-          <button type="submit" className="p-1 hover:text-emerald-500 transition-colors">
-            <Search className="w-4 h-4" />
-          </button>
-        </form>
-
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsProxyEnabled(!isProxyEnabled)}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-              isProxyEnabled 
-                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                : 'bg-white/5 text-white/40 border border-transparent'
-            }`}
-          >
-            {isProxyEnabled ? <ShieldCheck className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-            {isProxyEnabled ? 'VPN ACTIVE' : 'VPN OFF'}
-          </button>
-          <button className="p-2 hover:bg-white/5 rounded-full"><Menu className="w-5 h-5" /></button>
-        </div>
-      </header>
-
-      {/* Main Viewport */}
-      <main className="flex-1 bg-white relative">
-        <AnimatePresence>
-          {!currentUrl && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-[#1e1e1e] flex flex-col items-center justify-center p-8 text-center"
+    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${isDark ? 'bg-[#0F172A]' : 'bg-[#F1F5F9]'}`}>
+      <div className={`w-full max-w-md glass rounded-[2.5rem] overflow-hidden flex flex-col h-[800px] relative ${isDark ? 'bg-slate-900/90 border-slate-800' : ''}`}>
+        
+        {/* Header */}
+        <div className="p-6 flex justify-between items-center">
+          <div className="flex gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-xl">
+            <button 
+              onClick={() => setMode('standard')}
+              className={`p-2 rounded-lg transition-all ${mode === 'standard' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-gray-400'}`}
             >
-              <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center mb-6">
-                <Globe className="w-10 h-10 text-emerald-500" />
-              </div>
-              <h2 className="text-3xl font-bold mb-2 tracking-tight">Nexus Browser</h2>
-              <p className="text-white/40 max-w-sm mb-8">
-                Surf the web securely with our built-in proxy system. Your traffic is routed through our secure servers.
-              </p>
-              
-              <div className="grid grid-cols-2 gap-4 w-full max-w-md">
-                {['google.com', 'wikipedia.org', 'github.com', 'reddit.com'].map(site => (
+              <Calculator size={18} />
+            </button>
+            <button 
+              onClick={() => setMode('scientific')}
+              className={`p-2 rounded-lg transition-all ${mode === 'scientific' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-gray-400'}`}
+            >
+              <FlaskConical size={18} />
+            </button>
+            <button 
+              onClick={() => setMode('converter')}
+              className={`p-2 rounded-lg transition-all ${mode === 'converter' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-gray-400'}`}
+            >
+              <Ruler size={18} />
+            </button>
+          </div>
+          
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setIsDark(!isDark)}
+              className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+            >
+              {isDark ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <button 
+              onClick={() => setShowHistory(!showHistory)}
+              className={`p-2 transition-colors ${showHistory ? 'text-blue-600' : 'text-gray-400'}`}
+            >
+              <History size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Display */}
+        <div className="flex-1 flex flex-col justify-end p-8 text-right overflow-hidden">
+          <div className="text-sm font-medium text-gray-400 dark:text-slate-500 mb-2 h-6 overflow-hidden whitespace-nowrap">
+            {expression}
+          </div>
+          <div className={`text-6xl font-bold tracking-tight break-all ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            {display}
+          </div>
+        </div>
+
+        {/* Keypad */}
+        <div className={`p-6 grid grid-cols-4 gap-3 ${isDark ? 'bg-slate-900/50' : 'bg-white/50'}`}>
+          {mode === 'scientific' && (
+            <div className="col-span-4 grid grid-cols-4 gap-3 mb-3">
+              <button onClick={() => handleScientific('sin')} className="calc-btn calc-btn-func h-12 text-sm">sin</button>
+              <button onClick={() => handleScientific('cos')} className="calc-btn calc-btn-func h-12 text-sm">cos</button>
+              <button onClick={() => handleScientific('tan')} className="calc-btn calc-btn-func h-12 text-sm">tan</button>
+              <button onClick={() => handleScientific('sqrt')} className="calc-btn calc-btn-func h-12 text-sm">√</button>
+              <button onClick={() => handleScientific('log')} className="calc-btn calc-btn-func h-12 text-sm">log</button>
+              <button onClick={() => handleScientific('ln')} className="calc-btn calc-btn-func h-12 text-sm">ln</button>
+              <button onClick={() => handleScientific('pow2')} className="calc-btn calc-btn-func h-12 text-sm">x²</button>
+              <button onClick={() => handleScientific('pi')} className="calc-btn calc-btn-func h-12 text-sm">π</button>
+            </div>
+          )}
+
+          {mode === 'converter' && (
+            <div className="col-span-4 grid grid-cols-2 gap-3 mb-3">
+              {CONVERSIONS.length.map(c => (
+                <button key={c.name} onClick={() => handleConvert(c.factor, c.name)} className="calc-btn calc-btn-func h-12 text-xs">{c.name}</button>
+              ))}
+              {CONVERSIONS.weight.map(c => (
+                <button key={c.name} onClick={() => handleConvert(c.factor, c.name)} className="calc-btn calc-btn-func h-12 text-xs">{c.name}</button>
+              ))}
+            </div>
+          )}
+
+          <button onClick={clear} className="calc-btn calc-btn-func h-16 text-red-500">AC</button>
+          <button onClick={() => handleOperator('%')} className="calc-btn calc-btn-func h-16">%</button>
+          <button onClick={backspace} className="calc-btn calc-btn-func h-16"><RotateCcw size={20} /></button>
+          <button onClick={() => handleOperator('/')} className="calc-btn calc-btn-op h-16">÷</button>
+
+          <button onClick={() => handleNumber('7')} className="calc-btn calc-btn-num h-16">7</button>
+          <button onClick={() => handleNumber('8')} className="calc-btn calc-btn-num h-16">8</button>
+          <button onClick={() => handleNumber('9')} className="calc-btn calc-btn-num h-16">9</button>
+          <button onClick={() => handleOperator('*')} className="calc-btn calc-btn-op h-16">×</button>
+
+          <button onClick={() => handleNumber('4')} className="calc-btn calc-btn-num h-16">4</button>
+          <button onClick={() => handleNumber('5')} className="calc-btn calc-btn-num h-16">5</button>
+          <button onClick={() => handleNumber('6')} className="calc-btn calc-btn-num h-16">6</button>
+          <button onClick={() => handleOperator('-')} className="calc-btn calc-btn-op h-16">−</button>
+
+          <button onClick={() => handleNumber('1')} className="calc-btn calc-btn-num h-16">1</button>
+          <button onClick={() => handleNumber('2')} className="calc-btn calc-btn-num h-16">2</button>
+          <button onClick={() => handleNumber('3')} className="calc-btn calc-btn-num h-16">3</button>
+          <button onClick={() => handleOperator('+')} className="calc-btn calc-btn-op h-16">+</button>
+
+          <button onClick={() => handleNumber('0')} className="calc-btn calc-btn-num h-16 col-span-2">0</button>
+          <button onClick={() => handleNumber('.')} className="calc-btn calc-btn-num h-16">.</button>
+          <button onClick={calculate} className="calc-btn calc-btn-eq h-16">=</button>
+        </div>
+
+        {/* History Overlay */}
+        <AnimatePresence>
+          {showHistory && (
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className={`absolute inset-0 z-20 flex flex-col ${isDark ? 'bg-slate-900' : 'bg-white'}`}
+            >
+              <div className="p-6 flex justify-between items-center border-b border-gray-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <History size={20} className="text-blue-600" />
+                  <h3 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>History</h3>
+                </div>
+                <div className="flex gap-2">
                   <button 
-                    key={site}
-                    onClick={() => { setUrl(site); handleNavigate(); }}
-                    className="p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all text-left flex items-center justify-between group"
+                    onClick={() => setHistory([])}
+                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                   >
-                    <span className="text-sm font-medium">{site}</span>
-                    <ExternalLink className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Trash2 size={20} />
                   </button>
-                ))}
+                  <button 
+                    onClick={() => setShowHistory(false)}
+                    className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {history.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
+                    <Clock size={48} strokeWidth={1} />
+                    <p>No history yet</p>
+                  </div>
+                ) : (
+                  history.map((item, i) => (
+                    <div 
+                      key={i} 
+                      className="text-right group cursor-pointer"
+                      onClick={() => {
+                        setDisplay(item.result);
+                        setShowHistory(false);
+                      }}
+                    >
+                      <div className="text-sm text-gray-400 dark:text-slate-500 mb-1 group-hover:text-blue-400 transition-colors">
+                        {item.expression}
+                      </div>
+                      <div className="text-xl font-bold dark:text-white">
+                        = {item.result}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {currentUrl && (
-          <iframe 
-            ref={iframeRef}
-            src={currentUrl}
-            className="w-full h-full border-none"
-            onLoad={() => setIsLoading(false)}
-            title="Browser Viewport"
-          />
-        )}
-
-        {isLoading && (
-          <div className="absolute top-0 left-0 right-0 h-1 bg-white/5 overflow-hidden">
-            <motion.div 
-              initial={{ x: '-100%' }}
-              animate={{ x: '100%' }}
-              transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-              className="w-1/3 h-full bg-emerald-500"
-            />
-          </div>
-        )}
-      </main>
-
-      {/* Status Bar */}
-      <footer className="bg-[#1a1a1a] px-4 py-1.5 flex justify-between items-center border-t border-white/5 text-[10px] font-mono uppercase tracking-widest text-white/30">
-        <div className="flex items-center gap-4">
-          <span>Status: {isLoading ? 'Loading...' : 'Ready'}</span>
-          <span className="text-emerald-500/50">Encrypted Connection</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span>Server: Global-Edge-01</span>
-          <span>IP: 192.168.1.1 (Masked)</span>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }
